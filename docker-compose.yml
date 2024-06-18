@@ -1,0 +1,155 @@
+version: '3.8'
+
+networks:
+  trancendence:
+    driver: bridge
+
+volumes:
+  db_auth_data:
+  db_otp_data:
+  db_api42_data:
+  db_match_history:
+
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    container_name: nginx
+    ports:
+      - "8080:90"
+      - "4430:4430"
+    networks:
+      - trancendence
+    restart: always
+
+#servizio di autenticazione
+  auth_db:
+    image: postgres
+    container_name: auth_db
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: transcend_users_db
+      POSTGRES_USER: transcend_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    networks:
+      - trancendence
+    restart: unless-stopped
+    volumes:
+      - db_auth_data:/var/lib/postgresql/data
+  
+  auth_service:
+    build: 
+      context: .
+      dockerfile: docker/auth/Dockerfile
+    command: sh -c "python3 manage.py makemigrations && python3 manage.py migrate && python3 manage.py runsslserver --key /app/private.key --certificate /app/certificate.crt 0.0.0.0:8000"
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - auth_db
+    networks:
+      - trancendence
+      
+  match_history:
+    image: postgres
+    ports:
+      - "5435:5432"
+    command: ["postgres", "-c", "port=5432"]
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: match_history_db
+      POSTGRES_USER: match_history_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_match_history:/var/lib/postgresql/data
+    networks:
+      - trancendence
+
+  matchmaking:
+    build:
+      context: .
+      dockerfile: docker/matchmaking_system/Dockerfile
+    command: sh -c "python3 manage.py makemigrations && python3 manage.py migrate && python3 manage.py runsslserver --key /app/private.key --certificate /app/certificate.crt 0.0.0.0:9001"
+    env_file:
+      - .env
+    ports:
+      - "9001:9001"
+    depends_on:
+      - match_history
+    networks:
+      - trancendence
+    restart:
+      always
+#otp
+  otp_db:
+    image: postgres
+    container_name: otp_db
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: transcend_users_db
+      POSTGRES_USER: transcend_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5433:5432"
+    networks:
+      - trancendence
+    restart: unless-stopped
+    volumes:
+      - db_otp_data:/var/lib/postgresql/data
+
+  otp_service:
+    build: 
+      context: .
+      dockerfile: docker/otp/Dockerfile
+    command: sh -c "python3 manage.py makemigrations && python3 manage.py migrate && python3 manage.py runsslserver --key /app/private.key --certificate /app/certificate.crt 0.0.0.0:8001"
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "8001:8001"
+    depends_on:
+      - otp_db
+    networks:
+      - trancendence
+
+#api42
+  api42_db:
+    image: postgres
+    container_name: api42_db
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: transcend_users_db
+      POSTGRES_USER: transcend_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5434:5432"
+    networks:
+      - trancendence
+    restart: unless-stopped
+    volumes:
+      - db_api42_data:/var/lib/postgresql/data
+
+  api42_service:
+    build: 
+      context: .
+      dockerfile: docker/api42/Dockerfile
+    command: sh -c "python3 manage.py makemigrations && python3 manage.py migrate && python3 manage.py runsslserver --key /app/private.key --certificate /app/certificate.crt 0.0.0.0:8002"
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "8002:8002"
+    depends_on:
+      - api42_db
+    networks:
+      - trancendence
+  
